@@ -1,0 +1,19 @@
+# opensteamtool.toml - runtime config for the patched kernel
+# The default provider (opensteamtool) talks to manifest.opensteamtool.com,
+# which now sits behind Cloudflare and answers 403. wudrm / steamrun both
+# return a usable request code, so we point at wudrm here.
+# Both of them returned the same code for depot 527231 in testing
+# (15019291861476783732), so either is fine.
+
+[manifest]
+url = "wudrm"
+timeout_resolve_ms = 5000
+timeout_connect_ms = 5000
+timeout_send_ms    = 10000
+timeout_recv_ms    = 20000
+
+[log]
+level = "info"
+
+[stats]
+enable_api = false

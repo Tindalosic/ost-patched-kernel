@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kernel-maintainer <noreply@example.com>
+Date: Sun, 8 Nov 2026 18:19:00 +0800
+Subject: [PATCH] stats: never clear local achievement data without Cloud
+ Redirect
+
+Hooks_NetPacket_UserStats answers ClientGetUserStats with an empty stats
+payload and eresult OK whenever the app has any depot registered in the
+Lua config. CloudRedirect was supposed to overlay the real achievements
+afterwards, but its GetAchievements() returns 0 as soon as the host is
+inactive (cloud_redirect.dll absent or [cloud].enabled = false).
+
+The client takes that empty-but-OK answer at face value and rewrites
+appcache\\stats\\UserGameStats_<steamid>_<appid>.bin into the 38-byte
+skeleton, which is exactly the "achievements vanish after re-importing a
+game" report: dropping the lua and re-adding it rebuilds the depot set,
+the hook fires again, and the local progress is gone.
+
+Bail out early instead, so the untouched response reaches the client and
+Steam keeps the on-disk stats.
+---
+ src/Hook/Hooks_NetPacket.cpp | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/src/Hook/Hooks_NetPacket.cpp b/src/Hook/Hooks_NetPacket.cpp
+--- a/src/Hook/Hooks_NetPacket.cpp
++++ b/src/Hook/Hooks_NetPacket.cpp
+@@ -368,6 +395,15 @@ namespace Hooks_NetPacket_UserStats {
+             LOG_ACHIEVEMENT_DEBUG("ClientGetUserStats response: no modification needed");
+             return false;
+         }
++        // Without CloudRedirect there is nobody to supply real achievements,
++        // and an empty-but-OK reply makes the client overwrite the local
++        // UserGameStats_<steamid>_<appid>.bin with its 38-byte skeleton.
++        // Leave the packet alone so Steam keeps whatever is on disk.
++        if (!CloudRedirectHost::IsActive()) {
++            LOG_ACHIEVEMENT_DEBUG("ClientGetUserStats response: CloudRedirect inactive, leave stats untouched (app {})",
++                                  resp.game_id());
++            return false;
++        }
++
+         resp.clear_stats();
+         resp.clear_achievement_blocks();
+         resp.set_eresult(1);  // k_EResultOK
+-- 
+2.43.0
